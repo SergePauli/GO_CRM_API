@@ -2,28 +2,38 @@ package main
 
 import (
 	"GO_CRM_API/internal/config"
-	"GO_CRM_API/internal/repo"
-	"fmt"
+	"GO_CRM_API/internal/db"
+	"GO_CRM_API/internal/preset"
+	"GO_CRM_API/internal/router"
 	"log"
+	"net/http"
+
+	"fmt"
 )
 
 func main() {
 	cfg := config.LoadConfig()
 
 	// PostgreSQL
-	db, err := repo.NewPostgres(cfg.PostgresDSN)
-	if err != nil {
-		log.Fatalf("❌ Postgres error: %v", err)
+	if err := db.InitPostgres(cfg.PostgresDSN); err != nil {
+		log.Fatalf("❌ PostgreSQL init failed: %v", err)
 	}
-	defer db.Close()
 	log.Println("✅ Connected to PostgreSQL")
 
 	// Redis
-	rdb := repo.NewRedis(cfg.RedisAddr)
-	if err := repo.PingRedis(rdb); err != nil {
-		log.Fatalf("❌ Redis error: %v", err)
-	}
-	log.Println("✅ Connected to Redis")
+    db.InitRedis(cfg.RedisAddr)
 
-	fmt.Println("App is running on port", cfg.Port)
+	if err := db.PingRedis(); err != nil {
+		log.Fatalf("❌ Redis init failed: %v", err)
+	}
+
+	log.Println("✅ Connected to Redis")
+    // Initialize all presets
+    preset.InitAllPresets()
+    fmt.Println("✅ All presets initialized")
+    // Initialize routes
+    router.InitRoutes()
+    // Start HTTP server
+    log.Printf("🚀 Starting server on port %s", cfg.Port)
+    log.Fatal(http.ListenAndServe(":"+cfg.Port, nil))
 }
