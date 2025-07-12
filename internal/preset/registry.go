@@ -7,6 +7,7 @@ var Registry = map[string]Preset{}
 func InitAllPresets() {
 	RegisterAreaPresets()    // <- сначала зависимые
 	RegisterAddressPresets() // <- потом основные
+	RegisterContragentAddressPresets()
 }
 
 func EnsurePresetLoaded(name string) error {	

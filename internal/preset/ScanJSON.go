@@ -1,63 +1,82 @@
 package preset
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/jackc/pgx/v5"
 )
 
-func collectNestedFields(prefix string, p Preset) []string {
-	var fields []string
+// collectColumns собирает все колонки для SQL-запроса из пресета
+// с учетом вложенных пресетов и алиасов
+// prefix - префикс для алиасов, например "area_"
+func collectColumns(p Preset, prefix string) []string {
+	var columns []string
+
 	for _, f := range p.Fields {
-		if f.Type == "preset" || f.Type == "array" {
-			nested, err := GetPreset(f.Source)
+		if f.Type == "computed" {
+			continue // не добавляем вычисляемые поля в SELECT
+		}
+
+		if f.NestedPreset != "" {
+			nested, err := GetPreset(f.NestedPreset)
 			if err != nil {
 				continue
 			}
-			subPrefix := prefix + f.Alias + "_"
-			fields = append(fields, collectNestedFields(subPrefix, nested)...)
-		} else if f.Type != "computed" {
+			newPrefix := prefix + f.Alias + "_"
+			columns = append(columns, collectColumns(nested, newPrefix)...)
+		} else {
 			alias := f.Alias
 			if alias == "" {
 				alias = f.Source
 			}
-			fields = append(fields, prefix+alias)
+			columns = append(columns, prefix+alias)
 		}
 	}
-	return fields
+
+	return columns
 }
 
-func (p Preset) ScanJSON( rows pgx.Rows) ([]any, error) {
-	var results []any
+// buildNestedJSON строит вложенную структуру JSON из плоской карты
+// flat - плоская карта с данными
+// p - пресет, определяющий структуру вложенности
+// prefix - префикс для ключей, например "area_"
+// Возвращает вложенную карту с данными
+func buildNestedJSON(flat map[string]any, p Preset, prefix string) map[string]any {
+	result := make(map[string]any)
 
-	columns := []string{}
 	for _, f := range p.Fields {
-		if f.Type == "preset" {
-			parts := strings.Split(f.Source, ".")
-			if len(parts) != 2 {
-				continue
-			}
-			key := parts[0]
-			nested, err := GetPreset(f.Source)
+		if f.NestedPreset != "" {
+			nested, err := GetPreset(f.NestedPreset)
 			if err != nil {
 				continue
 			}
-			for _, nf := range nested.Fields {
-				alias := nf.Alias
-				if alias == "" {
-					alias = nf.Source
-				}
-				columns = append(columns, fmt.Sprintf("%s_%s", key, alias))
+			newPrefix := prefix + f.Alias + "_"
+
+			if f.Type == "array" {
+				// пока нет поддержки группировки массива — можно реализовать позже
+				result[f.Alias] = []any{} // заглушка
+			} else {
+				result[f.Alias] = buildNestedJSON(flat, nested, newPrefix)
 			}
-		} else if f.Type != "computed" {
+		} else if f.Type == "computed" {
+			if f.Formatter != nil {
+				result[f.Alias] = f.Formatter(result)
+			}
+		} else {
 			alias := f.Alias
 			if alias == "" {
 				alias = f.Source
 			}
-			columns = append(columns, alias)
+			result[f.Alias] = flat[prefix+alias]
 		}
 	}
+
+	return result
+}
+
+
+// ScanJSON выполняет сканирование результатов запроса в формате JSON
+func (p Preset) ScanJSON( rows pgx.Rows) ([]any, error) {
+	var results []any
+	columns := collectColumns(p, "")	
 
 	for rows.Next() {
 		values := make([]any, len(columns))
@@ -65,7 +84,6 @@ func (p Preset) ScanJSON( rows pgx.Rows) ([]any, error) {
 		for i := range ptrs {
 			ptrs[i] = &values[i]
 		}
-
 		if err := rows.Scan(ptrs...); err != nil {
 			return nil, err
 		}
@@ -75,46 +93,8 @@ func (p Preset) ScanJSON( rows pgx.Rows) ([]any, error) {
 			flat[name] = values[i]
 		}
 
-		// ❗ вот тут магия — рекурсивное построение вложенности
-		final := map[string]any{}
-		for _, f := range p.Fields {
-			if f.Type == "preset" {
-				parts := strings.Split(f.Source, ".")
-				if len(parts) != 2 {
-					continue
-				}
-				model := parts[0]
-				nestedPreset, err := GetPreset(f.Source)
-				if err != nil {
-					continue
-				}
-
-				obj := map[string]any{}
-				for _, nf := range nestedPreset.Fields {
-					alias := nf.Alias
-					if alias == "" {
-						alias = nf.Source
-					}
-					key := model + "_" + alias
-					obj[alias] = flat[key]
-					delete(flat, key)
-				}
-				final[model] = obj
-			} else if f.Type == "computed" {
-				if f.Formatter != nil {
-					val := f.Formatter(final)
-					final[f.Alias] = val
-				}
-			} else {
-				alias := f.Alias
-				if alias == "" {
-					alias = f.Source
-				}
-				final[alias] = flat[alias]
-			}
-		}
-		
-		results = append(results, final)
+		jsonObj := buildNestedJSON(flat, p, "")
+		results = append(results, jsonObj)
 	}
 
 	return results, nil

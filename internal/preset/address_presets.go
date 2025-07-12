@@ -6,7 +6,7 @@ func RegisterAddressPresets() {
 		Fields: []FieldDef{
 			{Source: "addresses.id", Alias: "id", Type: "int"},
 			{Source: "addresses.value", Alias: "value", Type: "string"},
-			{Source: "area.card", Type: "preset"},	
+			{Source: "areas", Alias: "area", Type: "preset", NestedPreset: "area.card"},	
 			{
 				Type:      "computed",
 				Alias:     "sum_id",
@@ -19,7 +19,7 @@ func RegisterAddressPresets() {
 		},
 		Joins: []JoinSpec{
 			{Type: "LEFT JOIN", Expr: "areas ON areas.id = addresses.area_id"},
-		},
+		},	
 		
 	}
 
@@ -29,7 +29,7 @@ func RegisterAddressPresets() {
 			{Source: "addresses.id", Alias: "id", Type: "int"},
 			{Source: "addresses.area_id", Alias: "area_id", Type: "int"},
 			{Source: "addresses.value", Alias: "value", Type: "string"},
-			
+			{Source: "areas", Alias: "area", Type: "preset", NestedPreset: "area.card"},
 		},
 		Joins: []JoinSpec{
 			{Type: "LEFT JOIN", Expr: "areas ON areas.id = addresses.area_id"},

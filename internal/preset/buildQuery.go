@@ -7,6 +7,61 @@ import (
 	"github.com/Masterminds/squirrel"
 )
 
+
+func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefix string) (squirrel.SelectBuilder, map[string]string) {
+	aliasToSource := make(map[string]string)
+	// JOIN-ы самого пресета
+	for _, j := range preset.Joins {
+		switch strings.ToUpper(j.Type) {
+		case "LEFT JOIN":
+			builder = builder.LeftJoin(j.Expr)
+		case "RIGHT JOIN":
+			builder = builder.RightJoin(j.Expr)
+		case "JOIN", "":
+			builder = builder.Join(j.Expr)
+		default:
+			log.Printf("Unknown join type: %s", j.Type)
+		}
+	}
+
+	for _, f := range preset.Fields {
+		switch {
+		case f.Type == "computed":
+			continue
+
+		case f.Type == "preset" && f.NestedPreset != "":
+			nested, err := GetPreset(f.NestedPreset)
+			if err != nil {
+				log.Printf("Invalid nested preset: %s", f.NestedPreset)
+				continue
+			}
+			nestedPrefix := prefix + f.Alias + "_"
+
+			// Рекурсивный вызов
+			var nestedMap map[string]string
+			builder, nestedMap = collectColumnsAndJoins(builder, nested, nestedPrefix)
+
+			for k, v := range nestedMap {
+				aliasToSource[k] = v
+			}
+
+		default:
+			alias := f.Alias
+			if alias == "" {
+				alias = f.Source
+			}
+			fullAlias := prefix + alias
+			expr := f.Source + " AS " + fullAlias
+			builder = builder.Column(expr)
+			aliasToSource[fullAlias] = f.Source
+		}
+	}
+
+	
+
+	return builder, aliasToSource
+}
+
 // BuildQuery строит SQL-запрос на основе пресета и фильтров
 // Использует squirrel для построения запроса с поддержкой JOIN, WHERE и LIMIT
 // filters - это карта, где ключи - это имена полей с возможными операциями, например:
@@ -21,81 +76,9 @@ func (p Preset) BuildQuery(filters map[string]interface{}, offset, limit uint64)
 	builder := squirrel.Select().PlaceholderFormat(squirrel.Dollar).From(p.Table)
 
 	// SELECT ...
-	aliasToSource := map[string]string{}
-
-	for _, f := range p.Fields {
-		if f.Type == "preset" {
-			// Пример: area.card
-			parts := strings.Split(f.Source, ".")
-			if len(parts) != 2 {
-				log.Printf("⚠️ Invalid preset field: %s", f.Source)
-				continue
-			}
-			model, presetName := parts[0], parts[1]
-			nestedKey := model + "." + presetName
-
-			nested, err := GetPreset(nestedKey)
-			if err != nil {
-				log.Printf("⚠️ Nested preset %q not found: %v", nestedKey, err)
-				continue
-			}
-
-			// добавляем JOIN-ы из вложенного пресета
-			for _, j := range nested.Joins {
-				switch strings.ToUpper(j.Type) {
-				case "LEFT JOIN":
-					builder = builder.LeftJoin(j.Expr)
-				case "RIGHT JOIN":
-					builder = builder.RightJoin(j.Expr)
-				case "JOIN", "":
-					builder = builder.Join(j.Expr)
-				default:
-					log.Printf("⚠️ Unknown join type: %s", j.Type)
-				}
-			}
-
-			// добавляем поля из вложенного пресета
-			for _, nf := range nested.Fields {
-				colExpr := nf.Source
-				alias := nf.Alias
-				if alias == "" {
-					alias = nf.Source
-				}
-
-				nestedAlias := model + "_" + alias // area_name → area_name
-				builder = builder.Column(colExpr + " AS " + nestedAlias)
-				aliasToSource[nestedAlias] = colExpr
-			}
-			continue
-		}
-		if f.Type == "computed" {
-			continue // Пропускаем вычисляемые поля, они не нужны в SELECT
-		}
-
-		// обычное поле
-		expr := f.Source
-		if f.Alias != "" && f.Alias != f.Source {
-			expr += " AS " + f.Alias
-			aliasToSource[f.Alias] = f.Source
-		} else {
-			aliasToSource[f.Source] = f.Source
-		}
-		builder = builder.Column(expr)
-	}
-
-	// JOIN ...
-	for _, j := range p.Joins {
-		switch strings.ToUpper(j.Type) {
-		case "LEFT JOIN":
-			builder = builder.LeftJoin(j.Expr)
-		case "RIGHT JOIN":
-			builder = builder.RightJoin(j.Expr)
-		case "JOIN", "":
-			builder = builder.Join(j.Expr)
-		default:
-			log.Printf("⚠️ Unknown join type: %s", j.Type)
-		}
-	}
+	var aliasToSource map[string]string
+	builder, aliasToSource = collectColumnsAndJoins(builder, p, "")
+	
 
 	// WHERE ...
 	for rawKey, val := range filters {
