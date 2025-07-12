@@ -51,6 +51,7 @@ cp .env.example .env
 make run     # or make watch
 
 ---
+
 ## 🗂 Project Structure
 
 ```
