@@ -7,12 +7,14 @@ import (
 	"github.com/Masterminds/squirrel"
 )
 
-// collectColumnsAndJoins собирает колонки и JOIN-ы для пресета
+// collectJoinsAndAliasMap собирает JOIN-ы и алиасы для пресета
 // Возвращает обновленный builder и карту alias -> source
 // Используется для построения SQL-запросов с учетом JOIN-ов и алиас
-func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefix string) (squirrel.SelectBuilder, map[string]string) {
+// В отличие от collectColumnsAndJoins, не добавляет колонки в запрос
+func collectJoinsAndAliasMap(builder squirrel.SelectBuilder, preset Preset, prefix string) (squirrel.SelectBuilder, map[string]string) {
 	aliasToSource := make(map[string]string)
-	// JOIN-ы самого пресета
+
+	// Сначала добавим JOIN-ы самого пресета
 	for _, j := range preset.Joins {
 		switch strings.ToUpper(j.Type) {
 		case "LEFT JOIN":
@@ -22,66 +24,54 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 		case "JOIN", "":
 			builder = builder.Join(j.Expr)
 		default:
-			log.Printf("Unknown join type: %s", j.Type)
+			log.Printf("⚠️ Unknown join type: %s", j.Type)
 		}
 	}
 
+	// Теперь обрабатываем поля
 	for _, f := range preset.Fields {
 		switch {
-		case f.Type == "computed":
-			continue
-
 		case f.Type == "preset" && f.NestedPreset != "":
 			nested, err := GetPreset(f.NestedPreset)
 			if err != nil {
-				log.Printf("Invalid nested preset: %s", f.NestedPreset)
+				log.Printf("⚠️ Invalid nested preset: %s", f.NestedPreset)
 				continue
 			}
 			nestedPrefix := prefix + f.Alias + "_"
 
-			// Рекурсивный вызов
 			var nestedMap map[string]string
-			builder, nestedMap = collectColumnsAndJoins(builder, nested, nestedPrefix)
+			builder, nestedMap = collectJoinsAndAliasMap(builder, nested, nestedPrefix)
 
 			for k, v := range nestedMap {
 				aliasToSource[k] = v
 			}
 
-		default:
+		case f.Type != "computed":
 			alias := f.Alias
 			if alias == "" {
 				alias = f.Source
 			}
 			fullAlias := prefix + alias
-			expr := f.Source + " AS " + fullAlias
-			builder = builder.Column(expr)
 			aliasToSource[fullAlias] = f.Source
 		}
 	}
 
-	
-
 	return builder, aliasToSource
 }
 
-// BuildQuery строит SQL-запрос на основе пресета и фильтров
-// Использует squirrel для построения запроса с поддержкой JOIN, WHERE и LIMIT
-// filters - это карта, где ключи - это имена полей с возможными операциями, например:
-// "fieldname__eq": значение - для равенства
-// "fieldname__in": []значения - для IN
-// "fieldname__lt": значение - для меньше чем
-// "fieldname__lte": значение - для меньше или равно
-// "fieldname__gt": значение - для больше чем
-// "fieldname__gte": значение - для больше или равно
+// BuildCountQuery создает SQL-запрос для подсчета количества записей в таблице пресета
+// с учетом фильтров. Возвращает Squirrel SelectBuilder для дальнейшей настройки.
+// Фильтры должны быть в формате "field__op": value, где op - это операция сравнения
+// (eq, in, lt, lte, gt, gte, start, end, cnt).
+// Например: "name__eq": "John", "age__gt": 30
+// Возвращает ошибку, если пресет не найден или некорректен.
+func (p Preset) BuildCountQuery(filters map[string]interface{}) (squirrel.SelectBuilder, error) {
+	builder := squirrel.Select("COUNT(*)").PlaceholderFormat(squirrel.Dollar).From(p.Table)
 
-func (p Preset) BuildQuery(filters map[string]interface{}, offset, limit uint64) squirrel.SelectBuilder {
-	builder := squirrel.Select().PlaceholderFormat(squirrel.Dollar).From(p.Table)
-
-	// SELECT ...
-	var aliasToSource map[string]string
-	builder, aliasToSource = collectColumnsAndJoins(builder, p, "")
 	
-
+	// Получаем JOIN-ы и alias → source
+	var aliasToSource map[string]string
+	builder, aliasToSource = collectJoinsAndAliasMap(builder, p, "")
 	// WHERE ...
 	for rawKey, val := range filters {
 		parts := strings.SplitN(rawKey, "__", 2)
@@ -123,9 +113,9 @@ func (p Preset) BuildQuery(filters map[string]interface{}, offset, limit uint64)
 				builder = builder.Where(squirrel.Like{col: "%" + s + "%"})
 			}
 		default:
-			log.Printf("⚠️ Unknown filter operation: %s", op)
+			log.Printf("⚠️ Unknown filter op: %s", op)
 		}
 	}
 
-	return builder.Offset(offset).Limit(limit)
+	return builder, nil
 }
