@@ -1,6 +1,7 @@
 package preset
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -74,7 +75,7 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 // "fieldname__gt": значение - для больше чем
 // "fieldname__gte": значение - для больше или равно
 
-func (p Preset) BuildQuery(filters map[string]interface{}, offset, limit uint64) squirrel.SelectBuilder {
+func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offset, limit uint64) squirrel.SelectBuilder {
 	builder := squirrel.Select().PlaceholderFormat(squirrel.Dollar).From(p.Table)
 
 	// SELECT ...
@@ -126,6 +127,31 @@ func (p Preset) BuildQuery(filters map[string]interface{}, offset, limit uint64)
 			log.Printf("⚠️ Unknown filter operation: %s", op)
 		}
 	}
+	// ORDER BY ...
+	for _, sort := range sorts {
+		parts := strings.Fields(sort) // split by space: "field ASC"
+		if len(parts) == 0 {
+				continue
+		}
+		field := parts[0]
+		direction := "ASC"
+		if len(parts) > 1 {
+				dir := strings.ToUpper(parts[1])
+				if dir == "DESC" || dir == "ASC" {
+						direction = dir
+				}
+		}
 
+		col, ok := aliasToSource[field]
+		if !ok {
+				log.Printf("⚠️ Unknown sort field: %s", field)
+				continue
+		}
+
+		builder = builder.OrderBy(fmt.Sprintf("%s %s", col, direction))
+	}
+	if limit == 0 {
+    limit = 50 // или любое другое дефолтное значение
+	}
 	return builder.Offset(offset).Limit(limit)
 }

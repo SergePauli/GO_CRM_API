@@ -13,6 +13,7 @@ type IndexRequest struct {
 	Model   string                 `json:"model"`
 	Preset  string                 `json:"preset"`
 	Filters map[string]interface{} `json:"filters"`
+	Sorts []string								 `json:"sorts"`	
 	Offset  uint64                 `json:"offset"`
 	Limit   uint64                 `json:"limit"`
 }
@@ -36,7 +37,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := p.BuildQuery(req.Filters, req.Offset, req.Limit)
+	query := p.BuildQuery(req.Filters, req.Sorts, req.Offset, req.Limit)
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		http.Error(w, "Failed to build SQL", http.StatusInternalServerError)

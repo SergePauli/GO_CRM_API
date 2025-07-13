@@ -19,6 +19,7 @@ This project implements a **universal, high-performance API engine** in Go that 
 - Recursive support for nested presets (e.g. `contragent_address.address.area`)
 - High-performance JSON output via pgx.Rows scanning
 - Accurate `COUNT(*)` via `POST /api/count`
+- Support for multi-field sorting via `sorts: ["field ASC", "other DESC"]`
 - Dynamic, maintainable, and frontend-friendly
 
 ---
@@ -133,6 +134,7 @@ Returns data for a model using a given preset.
 
 #### Request Body:
 
+
 ```json
 {
   "model": "contragent_address",
@@ -143,7 +145,8 @@ Returns data for a model using a given preset.
     "kind__eq": 0,
     "address_value__cnt": "ул.",
     "address_area_name__start": "Респ"
-  }
+  },
+  "sorts": ["address_area_name DESC", "contragent_id ASC"]
 }
 ```
 
@@ -205,6 +208,27 @@ Returns total count of records with the same filters.
 | `__start` | starts with (`LIKE`) |
 | `__end`   | ends with (`LIKE`)   |
 | `__cnt`   | contains (`LIKE`)    |
+
+---
+
+## 📤 Sorting Support
+
+Sorting is applied via the `sorts` array:
+
+```json
+"sorts": [
+  "field_name ASC",
+  "nested_field_name DESC"
+]
+```
+
+Field names follow the alias naming used in filters and JSON output. Nested fields are fully supported if declared in the preset chain.
+
+Example:
+
+```json
+"sorts": ["address_area_name DESC", "contragent_id ASC"]
+```
 
 ---
 
