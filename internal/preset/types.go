@@ -13,9 +13,11 @@ type FieldDef struct {
 	Type         string                          // "int", "string", "bool", "computed", "array"
 	NestedPreset string                          // имя вложенного пресета
 	Formatter    func(map[string]any) any        // используется только при Type == "computed"
+	FKField      string // для has_many: внешний ключ в подтаблице
 }
 
 type JoinSpec struct {
 	Type string // "JOIN", "LEFT JOIN", "RIGHT JOIN"
 	Expr string // "areas ON areas.id = addresses.area_id"
 }
+

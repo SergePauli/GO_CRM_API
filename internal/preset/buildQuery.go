@@ -48,7 +48,7 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 				aliasToSource[k] = v
 			}
 
-		default:
+		case f.Source != "":
 			alias := f.Alias
 			if alias == "" {
 				alias = f.Source
@@ -65,6 +65,63 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 	return builder, aliasToSource
 }
 
+// collectAliasesAndHasMany собирает алиасы и has_many поля из пресета
+// Возвращает карту alias -> source и карту alias -> has_many
+// Используется для фильтрации и сортировки в запросах
+// Рекурсивно обходит вложенные пресеты и собирает алиасы
+// Если поле имеет тип "has_many", то добавляет его в aliasToHasMany
+// Если поле имеет тип "preset", то рекурсивно обходит вложенный пресет
+func collectAliasesAndHasMany(preset Preset) (map[string]string, map[string]bool) {
+	aliasToSource := make(map[string]string)
+	aliasToHasMany := make(map[string]bool)
+
+	var walk func(p Preset, path []string, inheritedHasMany bool)
+	walk = func(p Preset, path []string, inheritedHasMany bool) {
+		for _, f := range p.Fields {
+			// Полное имя алиаса (например: address_area_name)
+			fullAlias := strings.Join(append(path, f.Alias), "_")
+			isHasMany := inheritedHasMany || f.Type == "has_many"
+			
+			switch f.Type {
+			case "preset","has_many":
+				// Рекурсивно углубляемся в вложенный пресет
+				if f.NestedPreset == "" {
+					continue
+				}
+				nested, err := GetPreset(f.NestedPreset)
+				if err != nil {
+					log.Printf("⚠️ Invalid nested preset: %s", f.NestedPreset)
+					continue
+				}
+				walk(nested, append(path, f.Alias), isHasMany)
+
+			default:
+				// Базовые поля: сохраняем alias → SQL и принадлежность к has_many
+				if f.Source != ""  {
+					aliasToSource[fullAlias] = f.Source
+					if isHasMany {
+						aliasToHasMany[fullAlias] = true
+					}
+				}
+			}
+		}
+	}
+
+	walk(preset, []string{}, false)
+	return aliasToSource, aliasToHasMany
+}
+// FiltersTouchHasMany проверяет, есть ли в фильтрах поля, которые относятся к has_many
+// Используется для оптимизации запросов: если есть has_many, то добавляем DISTINCT
+func SortsTouchHasMany(sorts []string, aliasToHasMany map[string]bool) bool {
+	for _, s := range sorts {
+		parts := strings.Fields(s)
+		if len(parts) > 0 && aliasToHasMany[parts[0]] {
+			return true
+		}
+	}
+	return false
+}
+
 // BuildQuery строит SQL-запрос на основе пресета и фильтров
 // Использует squirrel для построения запроса с поддержкой JOIN, WHERE и LIMIT
 // filters - это карта, где ключи - это имена полей с возможными операциями, например:
@@ -75,13 +132,19 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 // "fieldname__gt": значение - для больше чем
 // "fieldname__gte": значение - для больше или равно
 
-func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offset, limit uint64) squirrel.SelectBuilder {
+func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offset, limit uint64,  prefix string) squirrel.SelectBuilder {
 	builder := squirrel.Select().PlaceholderFormat(squirrel.Dollar).From(p.Table)
 
 	// SELECT ...
-	var aliasToSource map[string]string
-	builder, aliasToSource = collectColumnsAndJoins(builder, p, "")
-	
+	var aliasToSource map[string]string	
+	 builder, aliasToSource = collectColumnsAndJoins(builder, p, prefix)
+	 log.Printf("aliasToSource = %+v", aliasToSource)
+	// Проверяем, есть ли в пресете has_many поля
+	_, aliasToHasMany := collectAliasesAndHasMany(p)	
+	log.Printf("aliasToHasMany = %+v", aliasToHasMany)
+	if FiltersTouchHasMany(filters, aliasToHasMany) || SortsTouchHasMany(sorts, aliasToHasMany) {
+		builder = builder.Distinct()
+	}
 
 	// WHERE ...
 	for rawKey, val := range filters {
@@ -127,6 +190,7 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 			log.Printf("⚠️ Unknown filter operation: %s", op)
 		}
 	}
+	
 	// ORDER BY ...
 	for _, sort := range sorts {
 		parts := strings.Fields(sort) // split by space: "field ASC"
