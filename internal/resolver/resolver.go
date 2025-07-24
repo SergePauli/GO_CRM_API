@@ -1,0 +1,201 @@
+package resolver
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+
+	"GO_CRM_API/internal/db"
+	"GO_CRM_API/internal/preset"
+)
+
+type ResolverResult struct {
+	data []map[string]any
+	Err  error
+}
+
+// CastToMapSlice пытается привести []any к []map[string]any с безопасной проверкой.
+// Возвращает ошибку, если хотя бы один элемент не является map[string]any.
+func CastToMapSlice(raw []any) ([]map[string]any, error) {
+	results := make([]map[string]any, len(raw))
+	for i, v := range raw {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("CastToMapSlice: element at index %d is not map[string]any", i)
+		}
+		results[i] = m
+	}
+	return results, nil
+}
+
+// extractPrimaryIDsAndCache считывает все строки один раз,
+// возвращает ID-шники и кэшированные строки для повторного использования
+// hasFields - это карта полей, которые имеют has_many отношения
+// Возвращает:
+// - map[string][]any: ID-шники для каждого has_many поля
+// - []map[string]any: кэшированные строки с полными данными
+
+
+func extractPrimaryIDsAndCache(
+	rows pgx.Rows,
+	hasFields map[string]*preset.FieldDef,
+) (map[string][]any, []map[string]any, error) {
+	defer rows.Close()
+
+	// Подготовка
+	pkSets := make(map[string]map[any]bool)      // для уникальных ID по каждому PKField
+	pkLists := make(map[string][]any)            // итоговые ID
+	cachedRows := make([]map[string]any, 0)
+
+	for key := range hasFields {
+		pkSets[key] = make(map[any]bool)
+	}
+
+	for rows.Next() {
+		values, err := rows.Values()		
+		if err != nil {
+			return nil, nil, fmt.Errorf("rows.Values: %w", err)
+		}
+
+		fields := rows.FieldDescriptions()
+		row := make(map[string]any)
+
+		// Построим row и соберем PK-значения
+		for i, fd := range fields {
+			col := string(fd.Name)
+			val := values[i]
+			row[col] = val
+		}
+		
+		// Обработка всех PKField
+		for alias, field := range hasFields {			
+			pk := field.PKField    	
+    	if val, ok := row[pk]; ok && val != nil {
+        if !pkSets[alias][val] {
+            pkSets[alias][val] = true
+            pkLists[alias] = append(pkLists[alias], val)
+        }
+    	}
+		}
+
+		cachedRows = append(cachedRows, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("rows.Err: %w", err)
+	}
+
+	return pkLists, cachedRows, nil
+}
+
+// groupBy группирует данные по значению ключа
+func groupBy(data []map[string]any, key string) map[string][]map[string]any {
+	grouped := make(map[string][]map[string]any)
+	for _, item := range data {
+		val, ok := item[key]
+		if !ok {
+			continue
+		}
+		strKey := fmt.Sprintf("%v", val)
+		grouped[strKey] = append(grouped[strKey], item)
+	}
+	return grouped
+}
+
+
+// Resolver выполняет запрос к базе данных с использованием пресета и возвращает результат
+// Использует параллельную загрузку has_many и has_one полей
+func Resolver(ctx context.Context, req IndexRequest) ([]map[string]any, error) {
+	presetName := fmt.Sprintf("%s.%s", req.Model, req.Preset)
+	fmt.Println(">> Using preset:", presetName)
+
+	p, err := preset.GetPreset(presetName)
+	if err != nil {
+		return nil, fmt.Errorf("resolver: preset not found: %s", presetName)
+	}
+	
+	// 1. Строим SQL (включая JOIN и has_one пресеты)
+	main_query, hasFields:= p.BuildQuery(req.Filters, req.Sorts, req.Offset, req.Limit) 
+	// 2. Выполняем запрос
+	sqlStr, args, err := main_query.ToSql()
+	if err != nil {		
+		return nil, fmt.Errorf("resolver: Failed to build SQL: %w", err)
+	}
+	log.Printf("Executing query: %s\nARGS: %#v\n", sqlStr, args)
+	
+	rows, err := db.Conn.Query(context.Background(), sqlStr, args...)
+	if err != nil {		
+		return nil, fmt.Errorf("resolver: DB error: %w", err)
+	}
+	defer rows.Close()
+
+	
+	if len(hasFields) == 0 {
+		// Если нет has_many полей, просто сканируем в JSON
+		raw, err := p.ParseRowsToJSON(rows)
+		if err != nil {
+			return nil, fmt.Errorf("resolver: scan error: %w", err)
+		}		
+		return raw, nil
+	} else {
+			// Если есть has_many поля, то:			
+			// 1. Сканируем родительскую выборку в кэш + собираем ID-шники
+			idMap, cachedRows, err := extractPrimaryIDsAndCache(rows, hasFields)					
+			if err != nil {
+				return nil, fmt.Errorf("extractPrimaryIDsAndCache: %w", err)
+			}
+			hasManyData := make(map[string]map[string][]map[string]any)
+
+			for _, field := range hasFields {
+				nestedPresetName := field.NestedPreset
+				if nestedPresetName == "" {
+					continue
+				}
+
+				ids := idMap[field.Alias]
+				if len(ids) == 0 {
+					continue
+				}
+				parts := strings.SplitN(nestedPresetName, ".", 2)
+				if len(parts) != 2 {
+					log.Printf("Некорректный NestedPreset: %s", nestedPresetName)
+					continue
+				}
+				// Формируем фильтры для вложенного resolver'а
+				nestedReq := IndexRequest{
+					Model: 		 parts[0],
+					Preset:  	parts[1],
+					Filters: map[string]any{
+						field.FKField+"__in": ids,
+					},
+				Offset: 0,}				
+				if field.Sorts != nil {
+					nestedReq.Sorts = field.Sorts
+				} 
+				//log.Printf("Nested request for %s: %#v", nestedPresetName, nestedReq)
+				// Вызов рекурсивного Resolver
+				nestedResult, err := Resolver(ctx, nestedReq)
+				//log.Printf("Nested result for %s: %#v", nestedPresetName, nestedResult)
+				if err != nil {
+					return nil, fmt.Errorf("resolver: nested preset '%s' error: %w", nestedPresetName, err)
+				}
+				grouped := groupBy(nestedResult, field.FKField)
+				//log.Printf("Grouped has_many data for %s: %#v", field.Alias, grouped)
+				// Сохраняем в hasManyData по JSON alias-ключу
+				hasManyData[field.Alias] = grouped
+			}
+			raw, err := p.DataToJSON(cachedRows, hasManyData)
+			if err != nil {
+				return nil, fmt.Errorf("resolver: scan error: %w", err)
+			}
+			// Приводим []any → []map[string]any
+			results, err := CastToMapSlice(raw)
+			if err != nil {
+				return nil, err
+			}
+		return results, nil
+	}
+}

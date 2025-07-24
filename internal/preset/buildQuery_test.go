@@ -73,7 +73,7 @@ func TestBuildQueryAddsDistinctOnHasManyFilter(t *testing.T) {
 	}
 
 	// Выполняем построение SQL-запроса
-	q := Registry["parents.card"].BuildQuery(filters, nil, 0, 10, "")
+	q,_ := Registry["parents.card"].BuildQuery(filters, nil, 0, 10)
 	sqlStr, _, err := q.ToSql()
 	if err != nil {
 		t.Fatalf("Failed to build SQL: %v", err)
@@ -88,7 +88,7 @@ func TestBuildQueryAddsDistinctOnHasManySort(t *testing.T) {
 	Registry = RegisterTestPresets()
 
 	sorts := []string{"children_child_name ASC"}
-	query := Registry["parents.card"].BuildQuery(nil, sorts, 0, 0, "")
+	query,_ := Registry["parents.card"].BuildQuery(nil, sorts, 0, 0)
 	sql, _, err := query.ToSql()
 	if err != nil {
 		t.Fatalf("failed to generate SQL: %v", err)
@@ -103,7 +103,7 @@ func TestBuildQueryAddsDistinctOnNestedHasMany(t *testing.T) {
 	filters := map[string]interface{}{
 		"children_toys_toy_name__cnt": "ball",
 	}
-	query := Registry["parents.deep"].BuildQuery(filters, nil, 0, 0, "")
+	query,_ := Registry["parents.deep"].BuildQuery(filters, nil, 0, 0)
 	sql, _, err := query.ToSql()
 	if err != nil {
 		t.Fatalf("failed to generate SQL: %v", err)

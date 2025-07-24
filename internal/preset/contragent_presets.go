@@ -11,7 +11,9 @@ func RegisterContragentAddressesPresets() {
 				Alias:        "contragent_addresses",
 				Type:         "has_many",
 				NestedPreset: "contragent_address.edit", // отдельный вложенный пресет
-				FKField:      "contragent_addresses.contragent_id",
+				PKField: "id",
+				FKField: "contragent_id",
+				Sorts: []string{"address_area_id ASC"},
 			},
 		},
 	}
