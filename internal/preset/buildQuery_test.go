@@ -21,16 +21,14 @@ func RegisterTestPresets() map[string]Preset{
 				{Source: "parents.id", Alias: "id", Type: "int"},
 				{Alias: "children", Type: "has_many", NestedPreset: "children.with_name"},
 			},
-			Joins: []JoinSpec{},
+			
 		},
 		"children.with_name": {
 			Table: "children",
 			Fields: []FieldDef{
 				{Source: "children.name", Alias: "child_name", Type: "string"},
 			},
-			Joins: []JoinSpec{
-				{Type: "LEFT JOIN", Expr: "children ON children.parent_id = parents.id"},
-			},
+			
 		},		
 		"toy": {
 			Table: "toys",
@@ -38,9 +36,7 @@ func RegisterTestPresets() map[string]Preset{
 				{Source: "toys.child_id", Alias: "child_id", Type: "int"},
 				{Source: "toys.name", Alias: "toy_name", Type: "string"},
 			},
-			Joins: []JoinSpec{
-				{Type: "LEFT JOIN", Expr: "toys ON toys.child_id = children.id"},
-			},
+			
 		},
 		"parents.deep": {
 			Table: "parents",
@@ -56,9 +52,7 @@ func RegisterTestPresets() map[string]Preset{
 				{Source: "children.name", Alias: "child_name", Type: "string"},
 				{Alias: "toys", Type: "has_many", NestedPreset: "toy"},
 			},
-			Joins: []JoinSpec{
-				{Type: "LEFT JOIN", Expr: "children ON children.parent_id = parents.id"},
-			},
+			
 		},
 	}
 	return Registry

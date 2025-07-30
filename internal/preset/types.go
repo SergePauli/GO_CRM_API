@@ -3,8 +3,7 @@ package preset
 // Preset описывает структуру пресета для SQL-запросов
 type Preset struct {
 	Table     string
-	Fields    []FieldDef
-	Joins     []JoinSpec	
+	Fields    []FieldDef	
 }
 
 
@@ -17,10 +16,9 @@ type FieldDef struct {
 	PKField     	string // для has_many: поле первичного ключа в основной таблице, если не "id"
 	FKField      	string // для has_many: внешний ключ в подтаблице
 	Sorts 				[]string // для has_many: сортировка по полям вложенного пресета
+	Where					string // условие для фильтрации, например "areas.id = 1"
+	Internal			bool // если true, поле не будет возвращаться в ответах API
 }
 
-type JoinSpec struct {
-	Type string // "JOIN", "LEFT JOIN", "RIGHT JOIN"
-	Expr string // "areas ON areas.id = addresses.area_id"
-}
+
 

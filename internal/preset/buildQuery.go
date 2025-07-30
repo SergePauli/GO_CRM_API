@@ -11,43 +11,63 @@ import (
 // collectColumnsAndJoins собирает колонки и JOIN-ы для пресета
 // Возвращает обновленный builder и карту alias -> source
 // Используется для построения SQL-запросов с учетом JOIN-ов и алиас
-func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefix string, hasFields map[string]*FieldDef) (squirrel.SelectBuilder, map[string]string) {
+func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefix string, hasFields map[string]*FieldDef, whereFields *[]FieldDef,) (squirrel.SelectBuilder, map[string]string) {
 	aliasToSource := make(map[string]string)
-	// JOIN-ы самого пресета
-	for _, j := range preset.Joins {
-		switch strings.ToUpper(j.Type) {
-		case "LEFT JOIN":
-			builder = builder.LeftJoin(j.Expr)
-		case "RIGHT JOIN":
-			builder = builder.RightJoin(j.Expr)
-		case "JOIN", "":
-			builder = builder.Join(j.Expr)
-		default:
-			log.Printf("Unknown join type: %s", j.Type)
-		}
-	}
 
 	for _, f := range preset.Fields {
+		if (f.Type == "has_many" || f.Type == "has_one") && f.Where != "" {
+			fieldCopy := f
+			*whereFields = append(*whereFields, fieldCopy)			
+		} else if (f.Where == "" && f.Type == "has_one") {
+			log.Printf("⚠️ has_one поле %s не содержит ограничения в Where — может вернуть несколько строк", f.Alias)
+		}	
 		switch {
 		case f.Type == "computed":
 			continue
 
-		case f.Type == "preset" && f.NestedPreset != "":
+		case (f.Type == "preset" || f.Type == "has_one") && f.NestedPreset != "":
 			nested, err := GetPreset(f.NestedPreset)
 			if err != nil {
 				log.Printf("Invalid nested preset: %s", f.NestedPreset)
 				continue
 			}
-			nestedPrefix := prefix + f.Alias + "_"
+			// Получаем source и alias
+			parentAlias := preset.Table // например, "contragents"
+			if prefix != "" {
+				parentAlias =  strings.TrimRight(prefix,"_") // убираем последний "_"
+			}			
+			childAlias := prefix + f.Alias // например, "real_address"
+			childTable := nested.Table // например, "addresses"
+			pk := f.PKField
+				if pk == "" {
+					pk = "id"
+			}
+			fk := f.FKField
+				if fk == "" {
+				fk = f.Alias + "_id" 
+			}
+			var onClause string
+			if f.Type == "has_one" {
+				onClause = fmt.Sprintf("%s.%s = %s.%s", childAlias, fk, parentAlias, pk)
+			} else { // f.Type == preset
+				onClause = fmt.Sprintf("%s.%s = %s.%s", parentAlias, fk, childAlias, pk)
+			}	
+
+			// Добавляем JOIN
+			builder = builder.LeftJoin(fmt.Sprintf("%s AS %s ON %s", childTable, childAlias, onClause))
+			aliasToSource[childAlias] = childTable
+
+			log.Printf("✅ Добавлен JOIN для  %s: %s", f.Alias, onClause)
+			nestedPrefix := childAlias + "_"
 
 			// Рекурсивный вызов
 			var nestedMap map[string]string
-			builder, nestedMap = collectColumnsAndJoins(builder, nested, nestedPrefix, hasFields)
+			builder, nestedMap = collectColumnsAndJoins(builder, nested, nestedPrefix, hasFields, whereFields)
 
 			for k, v := range nestedMap {
 				aliasToSource[k] = v
 			}
-		case (f.Type == "has_many" || f.Type == "has_one") && f.FKField != "" && f.NestedPreset != "": {
+		case (f.Type == "has_many") && f.FKField != "" && f.NestedPreset != "": {
 				// Добавим в глобальную карту
 				fieldCopy := f // важно: создаем копию, иначе ссылка будет меняться
 				// Добавляем алиас для первичного ключа в выборке
@@ -64,7 +84,13 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 				alias = f.Source
 			}
 			fullAlias := prefix + alias
-			expr := f.Source + " AS " + fullAlias
+			var fieldAlias string
+			if prefix == "" {
+    		fieldAlias = f.Source
+			} else {
+    		fieldAlias = strings.Replace(fullAlias, "_"+alias, "."+alias,1) // заменяем на SQL-валидный путь
+			}
+			expr := fieldAlias + " AS " + fullAlias
 			builder = builder.Column(expr)
 			aliasToSource[fullAlias] = f.Source			
 		}	
@@ -90,7 +116,7 @@ func collectAliasesAndHasMany(preset Preset) (map[string]string, map[string]bool
 			isHasMany := inheritedHasMany || f.Type == "has_many"
 			
 			switch f.Type {
-			case "preset","has_many":
+			case "preset","has_many","has_one":
 				// Рекурсивно углубляемся в вложенный пресет
 				if f.NestedPreset == "" {
 					continue
@@ -145,8 +171,10 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 	var prefix string = ""
 	// SELECT ...
 	var aliasToSource map[string]string	
-	 builder, aliasToSource = collectColumnsAndJoins(builder, p, prefix, hasFields )
-	 log.Printf("aliasToSource = %+v", aliasToSource)
+	// Создаём whereFields (как список значений, не ссылок)
+	var whereFields []FieldDef
+	 builder, aliasToSource = collectColumnsAndJoins(builder, p, prefix, hasFields, &whereFields )
+	 log.Printf("aliasToSource = %+v whereFields = %+v", aliasToSource, whereFields)
 	 
 	// Проверяем, есть ли в пресете has_many поля
 	_, aliasToHasMany := collectAliasesAndHasMany(p)	
@@ -156,14 +184,25 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 	}
 
 	// WHERE ...
+	for _, f := range whereFields  {
+		
+		if f.Where == "" && !(f.Type == "has_one" || f.Type == "has_many") {
+			continue
+		}
+
+		// добавить через squirrel.Expr
+		builder = builder.Where(squirrel.Expr(f.Where))	
+	}
+	
 	for rawKey, val := range filters {
 		parts := strings.SplitN(rawKey, "__", 2)
-		fieldName := parts[0]
+		
+		fieldName := parts[0] 
+		
 		op := "eq"
 		if len(parts) == 2 {
 			op = parts[1]
 		}
-
 		col, ok := aliasToSource[fieldName]
 		if !ok {
 			// Если алиас не найден, проверяем, не нужно ли добавить JOIN
@@ -173,7 +212,7 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 				log.Printf("Unknown filter field: %s", fieldName)
 				continue
 			}
-		}
+		} 
 		switch op {
 		case "eq":
 			builder = builder.Where(squirrel.Eq{col: val})
@@ -206,7 +245,7 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 	
 	// ORDER BY ...
 	checkedSorts := CheckedSorts(sorts, hasFields)
-	log.Printf("Checked sorts: %#v from sorts %#v", checkedSorts, sorts)
+	//log.Printf("Checked sorts: %#v from sorts %#v", checkedSorts, sorts)
 	for _, sort := range checkedSorts {
 		parts := strings.Fields(sort) // split by space: "field ASC"
 		if len(parts) == 0 {
@@ -221,18 +260,17 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 				}
 		}
 
-		col, ok := aliasToSource[field]
+		_, ok := aliasToSource[field]
 		if !ok {
 				// Если алиас не найден, проверяем, не нужно ли добавить JOIN
 			builder = EnsureJoinForMissingField(field, builder, p, "", aliasToSource)
-			col, ok = aliasToSource[field]
+			_, ok = aliasToSource[field]
 			if !ok {
 				log.Printf("Unknown filter field: %s", field)
 				continue
 			}
 		}
-
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", col, direction))
+		builder = builder.OrderBy(fmt.Sprintf("%s %s", field, direction))
 	}
 	if limit == 0 {
     limit = 50 // или любое другое дефолтное значение

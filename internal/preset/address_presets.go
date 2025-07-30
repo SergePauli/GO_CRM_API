@@ -17,23 +17,16 @@ func RegisterAddressPresets() {
 				},
 			},	
 		},
-		Joins: []JoinSpec{
-			{Type: "LEFT JOIN", Expr: "areas ON areas.id = addresses.area_id"},
-		},	
+		
 		
 	}
 
 	Registry["address.edit"] = Preset{
 		Table: "addresses",
 		Fields: []FieldDef{
-			{Source: "addresses.id", Alias: "id", Type: "int"},
-			{Source: "addresses.area_id", Alias: "area_id", Type: "int"},
+			{Source: "addresses.id", Alias: "id", Type: "int"},			
 			{Source: "addresses.value", Alias: "value", Type: "string"},
 			{Source: "areas", Alias: "area", Type: "preset", NestedPreset: "area.card"},
 		},
-		Joins: []JoinSpec{
-			{Type: "LEFT JOIN", Expr: "areas ON areas.id = addresses.area_id"},
-		},
-		
 	}
 }

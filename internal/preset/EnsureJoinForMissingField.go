@@ -24,7 +24,7 @@ func EnsureJoinForMissingField(
 		fullAlias := prefix + alias
 
 		switch {
-		case f.Type == "preset" && f.NestedPreset != "":
+		case (f.Type == "preset" || f.Type == "has_one") && f.NestedPreset != "":
 			if strings.HasPrefix(fieldName, fullAlias+"_") {
 				nested, err := GetPreset(f.NestedPreset)
 				if err != nil {

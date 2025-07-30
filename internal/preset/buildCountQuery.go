@@ -14,19 +14,7 @@ import (
 func collectJoinsAndAliasMap(builder squirrel.SelectBuilder, preset Preset, prefix string) (squirrel.SelectBuilder, map[string]string) {
 	aliasToSource := make(map[string]string)
 
-	// Сначала добавим JOIN-ы самого пресета
-	for _, j := range preset.Joins {
-		switch strings.ToUpper(j.Type) {
-		case "LEFT JOIN":
-			builder = builder.LeftJoin(j.Expr)
-		case "RIGHT JOIN":
-			builder = builder.RightJoin(j.Expr)
-		case "JOIN", "":
-			builder = builder.Join(j.Expr)
-		default:
-			log.Printf("⚠️ Unknown join type: %s", j.Type)
-		}
-	}
+	
 
 	// Теперь обрабатываем поля
 	for _, f := range preset.Fields {

@@ -17,10 +17,10 @@ func toNestedJSON(p Preset, flat map[string]any, hasManyData map[string]map[stri
 		if alias == "" {
 			alias = field.Source
 		}
-		fullKey := p.Table + "_" + alias
+		//fullKey := p.Table + "_" + alias
 
 		switch field.Type {
-		case "preset":
+		case "preset","has_one":
 			if field.NestedPreset != "" {
 				// Рекурсивный вызов вложенного пресета
 				nestedPreset, err := GetPreset(field.NestedPreset)
@@ -37,8 +37,8 @@ func toNestedJSON(p Preset, flat map[string]any, hasManyData map[string]map[stri
 						subFlat[strings.TrimPrefix(k, prefix)] = v
 					}
 				}
-
-				nested := toNestedJSON(nestedPreset, subFlat, hasManyData)
+				
+				nested := toNestedJSON(nestedPreset, subFlat, hasManyData)				
 				result[alias] = nested
 			}
 
@@ -46,9 +46,16 @@ func toNestedJSON(p Preset, flat map[string]any, hasManyData map[string]map[stri
 			if hasManyData != nil {
 				// Получаем PK текущей записи (всегда string)
 				pkVal := fmt.Sprintf("%v", flat[field.PKField])
-				grouped, ok := hasManyData[alias]
-				if ok {
-					result[alias] = grouped[pkVal]
+				grouped, ok := hasManyData[alias]				
+				if ok {					
+					children := grouped[pkVal]
+					if field.Internal {
+						// Удаляем PKField из каждого вложенного объекта
+						for _, child := range children {
+							delete(child, field.FKField)
+						}
+					}
+					result[alias] = children
 				} else {
 					result[alias] = []any{} // пустой массив
 				}
@@ -60,9 +67,11 @@ func toNestedJSON(p Preset, flat map[string]any, hasManyData map[string]map[stri
 
 		default:
 			// Прямое копирование значения
-			if val, ok := flat[fullKey]; ok {
-				result[alias] = val
-			}
+			if val, ok := flat[alias]; ok {
+				if !field.Internal {
+        	result[alias] = val
+    		}				
+			} else {log.Printf("toNestedJSON: field %s not found in flat data %#v", alias, flat)}
 		}
 	}
 

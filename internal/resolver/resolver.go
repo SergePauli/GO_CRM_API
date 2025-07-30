@@ -143,7 +143,7 @@ func Resolver(ctx context.Context, req IndexRequest) ([]map[string]any, error) {
 	} else {
 			// Если есть has_many поля, то:			
 			// 1. Сканируем родительскую выборку в кэш + собираем ID-шники
-			idMap, cachedRows, err := extractPrimaryIDsAndCache(rows, hasFields)					
+			idMap, cachedRows, err := extractPrimaryIDsAndCache(rows, hasFields)								
 			if err != nil {
 				return nil, fmt.Errorf("extractPrimaryIDsAndCache: %w", err)
 			}
@@ -170,20 +170,20 @@ func Resolver(ctx context.Context, req IndexRequest) ([]map[string]any, error) {
 					Preset:  	parts[1],
 					Filters: map[string]any{
 						field.FKField+"__in": ids,
-					},
-				Offset: 0,}				
+					},					
+					Offset: 0,}				
 				if field.Sorts != nil {
 					nestedReq.Sorts = field.Sorts
 				} 
-				//log.Printf("Nested request for %s: %#v", nestedPresetName, nestedReq)
+				
 				// Вызов рекурсивного Resolver
 				nestedResult, err := Resolver(ctx, nestedReq)
-				//log.Printf("Nested result for %s: %#v", nestedPresetName, nestedResult)
+							
 				if err != nil {
 					return nil, fmt.Errorf("resolver: nested preset '%s' error: %w", nestedPresetName, err)
 				}
 				grouped := groupBy(nestedResult, field.FKField)
-				//log.Printf("Grouped has_many data for %s: %#v", field.Alias, grouped)
+				
 				// Сохраняем в hasManyData по JSON alias-ключу
 				hasManyData[field.Alias] = grouped
 			}

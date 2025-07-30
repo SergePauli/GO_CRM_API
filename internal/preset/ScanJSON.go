@@ -57,7 +57,12 @@ func (p Preset) ParseFlatRow(flat map[string]any) (map[string]any, error) {
 			}
 			nested[field.Alias] = subNested
 		default:
+			if field.Internal {
+				continue // пропускаем внутренние поля
+			} else {
+			// Прямое копирование значения
 			nested[field.Alias] = flat[field.Alias]
+			}
 		}
 	}
 
@@ -137,7 +142,7 @@ func (p Preset) ParseRowsToJSON(rows pgx.Rows) ([]map[string]any, error) {
 				if field.Formatter != nil {
 					nested[field.Alias] = field.Formatter(flat)
 				}
-			case "preset":
+			case "preset","has_one":
 				nestedPreset, ok := Registry[field.NestedPreset]
 				if !ok {
 					return nil, fmt.Errorf("preset '%s': nested preset '%s' not found", p.Table, field.NestedPreset)
@@ -149,8 +154,8 @@ func (p Preset) ParseRowsToJSON(rows pgx.Rows) ([]map[string]any, error) {
 				}
 				nested[field.Alias] = subNested
 			default:
-				// Простое значение по алиасу
-				nested[field.Alias] = flat[field.Alias]
+				// Простое значение по алиасу				
+				nested[field.Alias] = flat[field.Alias]				
 			}
 		}
 

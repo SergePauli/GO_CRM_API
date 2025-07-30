@@ -13,7 +13,17 @@ func RegisterContragentAddressesPresets() {
 				NestedPreset: "contragent_address.edit", // отдельный вложенный пресет
 				PKField: "id",
 				FKField: "contragent_id",
+				Internal: true, // скрываем FKField в ответах API
 				Sorts: []string{"address_area_id ASC"},
+			},
+			// Связь один-к-один 
+			{		
+				Alias:        "real_address",
+				Type:         "has_one",
+				NestedPreset: "contragent_address.card", // отдельный вложенный пресет
+				PKField: "id",
+				FKField: "contragent_id",
+				Where: "real_address.used = true AND real_address.kind = 0", 
 			},
 		},
 	}
