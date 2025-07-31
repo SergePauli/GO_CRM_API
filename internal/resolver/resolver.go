@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 
@@ -147,8 +148,15 @@ func Resolver(ctx context.Context, req IndexRequest) ([]map[string]any, error) {
 			if err != nil {
 				return nil, fmt.Errorf("extractPrimaryIDsAndCache: %w", err)
 			}
-			hasManyData := make(map[string]map[string][]map[string]any)
+			
+			var (
+				wg           sync.WaitGroup
+				mu           sync.Mutex
+				nestedErr    error
+				hasManyData  = make(map[string]map[string][]map[string]any)
+			)
 
+			// 2. Параллельно загружаем has_many данные
 			for _, field := range hasFields {
 				nestedPresetName := field.NestedPreset
 				if nestedPresetName == "" {
@@ -163,30 +171,44 @@ func Resolver(ctx context.Context, req IndexRequest) ([]map[string]any, error) {
 				if len(parts) != 2 {
 					log.Printf("Некорректный NestedPreset: %s", nestedPresetName)
 					continue
-				}
-				// Формируем фильтры для вложенного resolver'а
-				nestedReq := IndexRequest{
-					Model: 		 parts[0],
-					Preset:  	parts[1],
-					Filters: map[string]any{
-						field.FKField+"__in": ids,
-					},					
-					Offset: 0,}				
-				if field.Sorts != nil {
-					nestedReq.Sorts = field.Sorts
-				} 
+				}				
+				wg.Add(1)
+				// Запускаем горутину для загрузки has_many данных
+				go func() {
+					defer wg.Done()// Завершаем горутину
+					// Формируем фильтры для вложенного resolver'а
+					nestedReq := IndexRequest{
+						Model: 		 parts[0],
+						Preset:  	parts[1],
+						Filters: map[string]any{
+							field.FKField+"__in": ids,
+						},					
+						Offset: 0,
+					}				
+					if field.Sorts != nil {
+						nestedReq.Sorts = field.Sorts
+					} 
 				
-				// Вызов рекурсивного Resolver
-				nestedResult, err := Resolver(ctx, nestedReq)
-							
-				if err != nil {
-					return nil, fmt.Errorf("resolver: nested preset '%s' error: %w", nestedPresetName, err)
-				}
-				grouped := groupBy(nestedResult, field.FKField)
-				
-				// Сохраняем в hasManyData по JSON alias-ключу
-				hasManyData[field.Alias] = grouped
+					// Вызов рекурсивного Resolver
+					nestedResult, err := Resolver(ctx, nestedReq)
+					if err != nil {
+						mu.Lock()// Лок для безопасного доступа к shared переменной
+						nestedErr = fmt.Errorf("resolver: nested preset '%s' error: %w", nestedPresetName, err)
+						mu.Unlock()
+						return
+					}
+					grouped := groupBy(nestedResult, field.FKField)
+					mu.Lock()
+					// Сохраняем в hasManyData по JSON alias-ключу
+					hasManyData[field.Alias] = grouped
+					mu.Unlock()// Освобождаем лок
+				}()	
 			}
+			wg.Wait()// Ждем завершения всех горутин
+			if nestedErr != nil {
+				return nil, nestedErr
+			}
+			// 3. Преобразуем кэшированные строки в JSON с учетом has_many данных
 			raw, err := p.DataToJSON(cachedRows, hasManyData)
 			if err != nil {
 				return nil, fmt.Errorf("resolver: scan error: %w", err)
