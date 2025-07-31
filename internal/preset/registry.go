@@ -87,7 +87,7 @@ func hasCycle(name string, visited map[string]bool, path []string) bool {
 	}
 
 	for _, f := range p.Fields {
-		if (f.Type == "preset" || f.Type == "has_many") && f.NestedPreset != "" {
+		if (f.Type == "belongs_to" || f.Type == "has_many") && f.NestedPreset != "" {
 			if hasCycle(f.NestedPreset, copyMap(visited), append(path, name)) {
 				return true
 			}

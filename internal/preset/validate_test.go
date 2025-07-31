@@ -7,22 +7,22 @@ func initFakeCyclicPresets() {
 	Registry = map[string]Preset{
 		"a": {
 			Fields: []FieldDef{
-				{Type: "preset", NestedPreset: "b"},
+				{Type: "belongs_to", NestedPreset: "b"},
 			},
 		},
 		"b": {
 			Fields: []FieldDef{
-				{Type: "preset", NestedPreset: "c"},
+				{Type: "belongs_to", NestedPreset: "c"},
 			},
 		},
 		"c": {
 			Fields: []FieldDef{
-				{Type: "preset", NestedPreset: "a"}, // цикл!
+				{Type: "belongs_to", NestedPreset: "a"}, // цикл!
 			},
 		},
 		"safe": {
 			Fields: []FieldDef{
-				{Type: "preset", NestedPreset: "leaf"},
+				{Type: "belongs_to", NestedPreset: "leaf"},
 			},
 		},
 		"leaf": {

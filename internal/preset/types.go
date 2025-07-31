@@ -10,7 +10,7 @@ type Preset struct {
 type FieldDef struct {
 	Source       string                          // SQL-путь: "addresses.id", "areas.name" или "relation.preset"
 	Alias        string                          // JSON-ключ, по умолчанию = Source
-	Type         string                          // "int", "string", "bool", "computed", "array"
+	Type         string                          // "int", "string", "bool", "computed", "belongs_to", "has_many", "has_one", "preset"
 	NestedPreset string                          // имя вложенного пресета
 	Formatter    func(map[string]any) any        // используется только при Type == "computed"
 	PKField     	string // для has_many: поле первичного ключа в основной таблице, если не "id"

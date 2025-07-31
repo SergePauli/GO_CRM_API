@@ -45,7 +45,7 @@ func (p Preset) ParseFlatRow(flat map[string]any) (map[string]any, error) {
 			if field.Formatter != nil {
 				nested[field.Alias] = field.Formatter(flat)
 			}
-		case "preset":
+		case "belongs_to":
 			nestedPreset, ok := Registry[field.NestedPreset]
 			if !ok {
 				return nil, fmt.Errorf("nested preset '%s' not found", field.NestedPreset)
@@ -78,7 +78,7 @@ func extractSubMapByPreset(flat map[string]any, parentAlias string, nested Prese
 			continue
 		}
 		// Вложенный пресет: рекурсивно извлекаем под-словарь
-		if f.Type == "preset" && f.NestedPreset != "" {
+		if f.Type == "belongs_to" && f.NestedPreset != "" {
 			nestedPreset := Registry[f.NestedPreset]
 			nestedPrefix := parentAlias+"_"+f.Alias
 			nestedMap := extractSubMapByPreset(flat, nestedPrefix, nestedPreset)			
@@ -142,7 +142,7 @@ func (p Preset) ParseRowsToJSON(rows pgx.Rows) ([]map[string]any, error) {
 				if field.Formatter != nil {
 					nested[field.Alias] = field.Formatter(flat)
 				}
-			case "preset","has_one":
+			case "belongs_to","has_one":
 				nestedPreset, ok := Registry[field.NestedPreset]
 				if !ok {
 					return nil, fmt.Errorf("preset '%s': nested preset '%s' not found", p.Table, field.NestedPreset)

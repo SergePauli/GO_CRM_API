@@ -12,7 +12,7 @@ import (
 
 type CountRequest struct {
 	Model   string                 `json:"model"`
-	Preset  string                 `json:"preset"`
+	Preset  string                 `json:"belongs_to"`
 	Filters map[string]interface{} `json:"filters"`	
 }
 

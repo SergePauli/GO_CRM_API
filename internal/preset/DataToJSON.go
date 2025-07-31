@@ -20,7 +20,7 @@ func toNestedJSON(p Preset, flat map[string]any, hasManyData map[string]map[stri
 		//fullKey := p.Table + "_" + alias
 
 		switch field.Type {
-		case "preset","has_one":
+		case "belongs_to","has_one":
 			if field.NestedPreset != "" {
 				// Рекурсивный вызов вложенного пресета
 				nestedPreset, err := GetPreset(field.NestedPreset)

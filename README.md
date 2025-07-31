@@ -81,9 +81,9 @@ GO_CRM_API/
 type FieldDef struct {
 	Source       string // SQL column or expression
 	Alias        string // JSON key (optional)
-	Type         string // "int", "string", "preset", "computed"
+	Type         string // "int", "string", "belongs_to", "computed"
 	Formatter    func(any) any // Optional computed formatter
-	NestedPreset string // For type = "preset"
+	NestedPreset string // For type = "belongs_to"
 }
 
 type JoinSpec struct {
@@ -116,7 +116,7 @@ Registry["contragent_address.edit"] = Preset{
 	Fields: []FieldDef{
 		{Source: "contragent_addresses.id", Alias: "id", Type: "int"},
 		{Source: "contragent_addresses.kind", Alias: "kind", Type: "string"},
-		{Source: "address", Type: "preset", NestedPreset: "address.edit"},
+		{Source: "address", Type: "belongs_to", NestedPreset: "address.edit"},
 	},
 	Joins: []JoinSpec{
 		{Type: "LEFT JOIN", Expr: "addresses ON addresses.id = contragent_addresses.address_id"},
@@ -138,7 +138,7 @@ Returns data for a model using a given preset.
 ```json
 {
   "model": "contragent_address",
-  "preset": "edit",
+  "belongs_to": "edit",
   "offset": 0,
   "limit": 10,
   "filters": {
@@ -178,7 +178,7 @@ Returns total count of records with the same filters.
 ```json
 {
   "model": "contragent_address",
-  "preset": "edit",
+  "belongs_to": "edit",
   "filters": {
     "address_area_name__start": "Респ"
   }
@@ -255,7 +255,7 @@ curl -X POST http://localhost:8080/api/index \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "contragent_address",
-    "preset": "edit",
+    "belongs_to": "edit",
     "offset": 0,
     "limit": 10,
     "filters": {

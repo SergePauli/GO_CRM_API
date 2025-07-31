@@ -19,7 +19,7 @@ func collectJoinsAndAliasMap(builder squirrel.SelectBuilder, preset Preset, pref
 	// Теперь обрабатываем поля
 	for _, f := range preset.Fields {
 		switch {
-		case f.Type == "preset" && f.NestedPreset != "":
+		case f.Type == "belongs_to" && f.NestedPreset != "":
 			nested, err := GetPreset(f.NestedPreset)
 			if err != nil {
 				log.Printf("⚠️ Invalid nested preset: %s", f.NestedPreset)

@@ -6,7 +6,7 @@ func RegisterAddressPresets() {
 		Fields: []FieldDef{
 			{Source: "addresses.id", Alias: "id", Type: "int"},
 			{Source: "addresses.value", Alias: "value", Type: "string"},
-			{Source: "areas", Alias: "area", Type: "preset", NestedPreset: "area.card"},	
+			{Source: "areas", Alias: "area", Type: "belongs_to", NestedPreset: "area.card"},	
 			{
 				Type:      "computed",
 				Alias:     "sum_id",
@@ -26,7 +26,7 @@ func RegisterAddressPresets() {
 		Fields: []FieldDef{
 			{Source: "addresses.id", Alias: "id", Type: "int"},			
 			{Source: "addresses.value", Alias: "value", Type: "string"},
-			{Source: "areas", Alias: "area", Type: "preset", NestedPreset: "area.card"},
+			{Source: "areas", Alias: "area", Type: "belongs_to", NestedPreset: "area.card"},
 		},
 	}
 }

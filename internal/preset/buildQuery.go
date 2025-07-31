@@ -25,7 +25,7 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 		case f.Type == "computed":
 			continue
 
-		case (f.Type == "preset" || f.Type == "has_one") && f.NestedPreset != "":
+		case (f.Type == "belongs_to" || f.Type == "has_one") && f.NestedPreset != "":
 			nested, err := GetPreset(f.NestedPreset)
 			if err != nil {
 				log.Printf("Invalid nested preset: %s", f.NestedPreset)
@@ -103,7 +103,7 @@ func collectColumnsAndJoins(builder squirrel.SelectBuilder, preset Preset, prefi
 // Используется для фильтрации и сортировки в запросах
 // Рекурсивно обходит вложенные пресеты и собирает алиасы
 // Если поле имеет тип "has_many", то добавляет его в aliasToHasMany
-// Если поле имеет тип "preset", то рекурсивно обходит вложенный пресет
+// Если поле имеет тип "belongs_to", то рекурсивно обходит вложенный пресет
 func collectAliasesAndHasMany(preset Preset) (map[string]string, map[string]bool) {
 	aliasToSource := make(map[string]string)
 	aliasToHasMany := make(map[string]bool)
@@ -116,7 +116,7 @@ func collectAliasesAndHasMany(preset Preset) (map[string]string, map[string]bool
 			isHasMany := inheritedHasMany || f.Type == "has_many"
 			
 			switch f.Type {
-			case "preset","has_many","has_one":
+			case "belongs_to","has_many","has_one":
 				// Рекурсивно углубляемся в вложенный пресет
 				if f.NestedPreset == "" {
 					continue
