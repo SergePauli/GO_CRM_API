@@ -203,11 +203,11 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 		if len(parts) == 2 {
 			op = parts[1]
 		}
-		col, ok := aliasToSource[fieldName]
+		_, ok := aliasToSource[fieldName]
 		if !ok {
 			// Если алиас не найден, проверяем, не нужно ли добавить JOIN
 			builder = EnsureJoinForMissingField(fieldName, builder, p, "", aliasToSource)
-			col, ok = aliasToSource[fieldName]
+			_, ok = aliasToSource[fieldName]
 			if !ok {
 				log.Printf("Unknown filter field: %s", fieldName)
 				continue
@@ -215,28 +215,28 @@ func (p Preset) BuildQuery(filters map[string]interface{}, sorts []string, offse
 		} 
 		switch op {
 		case "eq":
-			builder = builder.Where(squirrel.Eq{col: val})
+			builder = builder.Where(squirrel.Eq{fieldName: val})
 		case "in":
-			builder = builder.Where(squirrel.Eq{col: val})
+			builder = builder.Where(squirrel.Eq{fieldName: val})
 		case "lt":
-			builder = builder.Where(squirrel.Lt{col: val})
+			builder = builder.Where(squirrel.Lt{fieldName: val})
 		case "lte":
-			builder = builder.Where(squirrel.LtOrEq{col: val})
+			builder = builder.Where(squirrel.LtOrEq{fieldName: val})
 		case "gt":
-			builder = builder.Where(squirrel.Gt{col: val})
+			builder = builder.Where(squirrel.Gt{fieldName: val})
 		case "gte":
-			builder = builder.Where(squirrel.GtOrEq{col: val})
+			builder = builder.Where(squirrel.GtOrEq{fieldName: val})
 		case "start":
 			if s, ok := val.(string); ok {
-				builder = builder.Where(squirrel.Like{col: s + "%"})
+				builder = builder.Where(squirrel.Like{fieldName: s + "%"})
 			}
 		case "end":
 			if s, ok := val.(string); ok {
-				builder = builder.Where(squirrel.Like{col: "%" + s})
+				builder = builder.Where(squirrel.Like{fieldName: "%" + s})
 			}
 		case "cnt":
 			if s, ok := val.(string); ok {
-				builder = builder.Where(squirrel.Like{col: "%" + s + "%"})
+				builder = builder.Where(squirrel.Like{fieldName: "%" + s + "%"})
 			}
 		default:
 			log.Printf("⚠️ Unknown filter operation: %s", op)
