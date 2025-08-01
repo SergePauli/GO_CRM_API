@@ -18,6 +18,7 @@ type FieldDef struct {
 	Sorts 				[]string // для has_many: сортировка по полям вложенного пресета
 	Where					string // условие для фильтрации, например "areas.id = 1"
 	Internal			bool // если true, поле не будет возвращаться в ответах API
+	Select        string 
 }
 
 

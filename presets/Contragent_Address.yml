@@ -1,0 +1,23 @@
+table: contragent_addresses
+presets:
+  - name: card
+    fields:
+      - source: contragent_addresses.id
+        alias: id
+        type: int
+      - source: contragent_addresses.kind
+        alias: kind
+        type: int
+      - source: contragent_addresses.used
+        alias: used
+        type: bool
+      - source: contragent_addresses.contragent_id
+        alias: contragent_id
+        type: int
+        internal: true
+      - source: addresses
+        type: belongs_to
+        alias: address
+        nested_preset: Address.card
+        pk_field: id
+        fk_field: address_id

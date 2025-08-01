@@ -8,11 +8,11 @@ import (
 
 var Registry = map[string]Preset{}
 // RegisterPresets регистрирует все пресеты в реестре
-func InitAllPresets() {
-	RegisterAreaPresets()    // <- сначала зависимые
-	RegisterAddressPresets() // <- потом основные
-	RegisterContragentAddressPresets()
-	RegisterContragentAddressesPresets()
+func InitAllPresets(presetDir string) {
+	err := LoadPresetsFromDir(presetDir)
+	if err != nil {
+		log.Fatalf("Failed to load presets: %v", err)
+	}
 	ValidateAndPrunePresets() // <- проверка на циклы
 }
 // EnsurePresetLoaded проверяет, что пресет с данным именем загружен

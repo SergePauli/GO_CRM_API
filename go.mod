@@ -22,4 +22,5 @@ require (
 	github.com/redis/go-redis/v9 v9.11.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0
 )

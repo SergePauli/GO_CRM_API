@@ -29,7 +29,7 @@ func main() {
 
 	log.Println("✅ Connected to Redis")
     // Initialize all presets
-    preset.InitAllPresets()
+    preset.InitAllPresets(cfg.PresetDir)
     fmt.Println("✅ All presets initialized")
     // Initialize routes
     router.InitRoutes()

@@ -1,0 +1,15 @@
+table:  addresses
+presets:
+  - name: card
+    fields:
+      - source: addresses.id
+        alias: id
+        type: int        
+      - source: addresses.value
+        alias: value
+        type: string
+      - source: areas
+        type: belongs_to
+        alias: area
+        nested_preset: Area.card
+      

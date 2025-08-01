@@ -12,6 +12,7 @@ type Config struct {
 	Port        string
 	PostgresDSN string
 	RedisAddr   string
+	PresetDir  string
 }
 
 func LoadConfig() *Config {
@@ -21,6 +22,7 @@ func LoadConfig() *Config {
 		Port:        getEnv("PORT", "8080"),
 		PostgresDSN: getEnv("POSTGRES_DSN", "postgres://postgres:postgres@localhost:5432/app?sslmode=disable"),
 		RedisAddr:   getEnv("REDIS_ADDR", "localhost:6379"),
+		PresetDir:   getEnv("PRESET_DIR", "./presets"),
 	}
 
 	return cfg
